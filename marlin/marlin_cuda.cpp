@@ -89,5 +89,5 @@ void mul(
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("mul", &mul, "Marlin FP16xINT4 matmul.");
+  m.def("mul", &mul, "Marlin FP16xINT2 matmul.");
 }

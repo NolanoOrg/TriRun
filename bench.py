@@ -7,6 +7,7 @@ import marlin
 import time
 
 def benchmark(f, warmup=1, iter=10):
+    tick = time.time()
     for i in range(warmup + iter):
         f()
         # We do not synchronize here in order to hide the kernel launch overhead during benchmarkining as this will also
@@ -26,7 +27,7 @@ def get_problem(m, n, k, groupsize=-1):
         groupsize = k
     dev = torch.device('cuda:0')
     A = torch.randn((m, k), dtype=torch.half, device=dev)
-    B = torch.randint(low=-2**31, high=2**31, size=(k * n // 8,), device=dev)
+    B = torch.randint(low=-2**31, high=2**31, size=(k * n // 16,), device=dev)
     B_ref = torch.randn((k, n), dtype=torch.half, device=dev)
     C = torch.zeros((m, n), dtype=torch.half, device=dev)
     s = torch.zeros((k // groupsize, n), dtype=torch.half, device=dev)
@@ -58,6 +59,8 @@ elif 'A10' in gpu:
     SMS = 72
 elif '3090' in gpu:
     SMS = 82
+elif '4090' in gpu:
+    SMS = 128
 elif 'A6000' in gpu:
     SMS = 84
 else:
@@ -66,6 +69,12 @@ else:
 MODELS = {
     'ideal': [
         (4 * 256 * SMS, 256 * SMS)
+    ],
+    'Spectra2': [
+        (3072, 11264),
+        (11264, 3072),
+        (3072, 3072),
+        (768, 3072),
     ],
     'Llama7B': [
         (4096, 3 * 4096),
@@ -113,7 +122,7 @@ for groupsize in [-1, 128] if ALL else [128]:
         for batch in batchsizes:
             if not ALL and model != 'ideal' and batch != 16:
                 continue
-            tot_q = {'s': 0, 'TFLOP/s': 0, 'GB/s': 0, 'speedup': 0} 
+            tot_q: dict[str, float] = {'s': 0, 'TFLOP/s': 0, 'GB/s': 0, 'speedup': 0}
             for layer in layers:
                 A, B, C, B_ref, s = get_problem(batch, layer[1], layer[0], groupsize)
                 res_d = benchmark_dense(A, B_ref, C)

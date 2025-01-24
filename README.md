@@ -4,6 +4,14 @@
 
 # Marlin
 
+> [!IMPORTANT]
+>
+> This is a fork of [Marlin](https://github.com/IST-DASLab/marlin), and the goal is to make it work with FP16xINT2 matrix multiplications.
+>
+> Original README (which is mostly focused on FP16xINT4) follows.
+
+<!-- TODO: update README with information more relevant to 2-bit matmul -->
+
 This is Marlin, a **M**ixed **A**uto-**R**egressive **Lin**ear kernel (and the name of one of the planet's fastest fish), an extremely optimized FP16xINT4 matmul kernel aimed at LLM inference that can deliver close to ideal (4x)
 speedups up to batchsizes of 16-32 tokens (in contrast to the 1-2 tokens of prior work with comparable speedup). This makes Marlin well suited for larger-scale
 serving, speculative decoding or advanced multi-inference schemes such as CoT-Majority.

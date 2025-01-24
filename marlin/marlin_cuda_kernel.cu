@@ -40,7 +40,7 @@ struct Vec {
   }
 };
 
-using I4 = Vec<int, 4>;
+using I2 = Vec<int, 2>;
 
 // Matrix fragments for tensor core instructions; their precise layout is documented here: 
 // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#matrix-fragments-for-mma-m16n8k16-with-floating-point-type
@@ -74,6 +74,21 @@ __device__ inline void cp_async4_stream(void* smem_ptr, const void* glob_ptr) {
     "   .reg .b64 p;\n"
     "   createpolicy.fractional.L2::evict_first.b64 p, 1.0;"
     "   cp.async.cg.shared.global.L2::cache_hint [%0], [%1], %2, p;\n"
+    "}\n" :: "r"(smem), "l"(glob_ptr), "n"(BYTES)
+  );
+}
+
+// Same, but fewer bytes at a time?
+// TODO: don't use this, cp.async.cg only works with 16 byte chunks,
+// so cp.async.ca is used instead here but it copies to more cache levels.
+__device__ inline void cp_async2_stream(void* smem_ptr, const void* glob_ptr) {
+  const int BYTES = 8;
+  uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
+  asm volatile(
+    "{\n"
+    "   .reg .b64 p;\n"
+    "   createpolicy.fractional.L2::evict_first.b64 p, 1.0;"
+    "   cp.async.ca.shared.global.L2::cache_hint [%0], [%1], %2, p;\n"
     "}\n" :: "r"(smem), "l"(glob_ptr), "n"(BYTES)
   );
 }
@@ -129,16 +144,16 @@ __device__ inline int lop3(int a, int b, int c) {
 // We mostly follow the strategy in the link below, with some small changes:
 // https://github.com/NVIDIA/FasterTransformer/blob/main/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h
 __device__ inline FragB dequant(int q) {
-  const int LO = 0x000f000f;
-  const int HI = 0x00f000f0;
+  const int LO = 0x00030003;
+  const int HI = 0x00300030;
   const int EX = 0x64006400;
   // Guarantee that the `(a & b) | c` operations are LOP3s.
   int lo = lop3<(0xf0 & 0xcc) | 0xaa>(q, LO, EX);
   int hi = lop3<(0xf0 & 0xcc) | 0xaa>(q, HI, EX);
-  // We want signed int4 outputs, hence we fuse the `-8` symmetric zero point directly into `SUB` and `ADD`.
-  const int SUB = 0x64086408;
-  const int MUL = 0x2c002c00;
-  const int ADD = 0xd480d480;
+  // We want signed int2 outputs, hence we fuse the `-1` symmetric zero point directly into `SUB` and `ADD`.
+  const int SUB = 0x64016401; // 1024 + 1
+  const int MUL = 0x2c002c00; // 1/16
+  const int ADD = 0xd410d410; // -64 - 1
   FragB frag_b;
   frag_b[0] = __hsub2(
     *reinterpret_cast<half2*>(&lo),
@@ -196,7 +211,7 @@ template <
 >
 __global__ void Marlin(
   const int4* __restrict__ A, // fp16 input matrix of shape mxk 
-  const int4* __restrict__ B, // 4bit quantized weight matrix of shape kxn 
+  const int2* __restrict__ B, // 2bit quantized weight matrix of shape kxn 
         int4* __restrict__ C, // fp16 output buffer of shape mxn
   const int4* __restrict__ s, // fp16 quantization scales of shape (k/groupsize)xn 
   int  prob_m, // batch dimension m
@@ -360,7 +375,7 @@ __global__ void Marlin(
 
   // Since B-accesses have non-constant stride they have to be computed at runtime; we break dependicies between
   // subsequent accesses with a tile by maintining multiple pointers (we have enough registers), a tiny optimization.
-  const int4* B_ptr[b_sh_wr_iters];
+  const int2* B_ptr[b_sh_wr_iters];
   #pragma unroll
   for (int i = 0; i < b_sh_wr_iters; i++)
     B_ptr[i] = B + b_gl_rd_delta_i * i + b_gl_rd;
@@ -368,11 +383,11 @@ __global__ void Marlin(
   extern __shared__ int4 sh[];
   // Shared memory storage for global fetch pipelines. 
   int4* sh_a = sh;
-  int4* sh_b = sh_a + (stages * a_sh_stage);
+  int4* sh_b = sh_a + (stages * a_sh_stage); // FIXME: this is 2x too big
   int4* sh_s = sh_b + (stages * b_sh_stage);
   // Register storage for double buffer of shared memory reads. 
   FragA frag_a[2][thread_m_blocks];
-  I4 frag_b_quant[2];
+  I2 frag_b_quant[2];
   FragC frag_c[thread_m_blocks][4][2];
   FragS frag_s[2][4];
 
@@ -395,10 +410,11 @@ __global__ void Marlin(
           a_sh_wr_pred[i]
         );
       }
-      int4* sh_b_stage = sh_b + b_sh_stage * pipe;
+      int2* sh_b_stage = reinterpret_cast<int2*>(sh_b + b_sh_stage * pipe);
       #pragma unroll
       for (int i = 0; i < b_sh_wr_iters; i++) {
-        cp_async4_stream(&sh_b_stage[b_sh_wr_delta * i + b_sh_wr], B_ptr[i]);
+        // FIXME: find a way to use cp_async4_stream
+        cp_async2_stream(&sh_b_stage[b_sh_wr_delta * i + b_sh_wr], B_ptr[i]);
         B_ptr[i] += b_gl_rd_delta_o;
       }
       // Only fetch scales if this tile starts a new group
@@ -422,6 +438,8 @@ __global__ void Marlin(
   };
 
   // Load the next sub-tile from the current location in the shared memory pipe into the current register buffer.
+  // k = 1..(b_sh_wr_iters + 1)
+  // pipe 0..STAGES
   auto fetch_to_registers = [&] (int k, int pipe) {
     // It may seem inefficient that we reload the groups for every sub-tile; however, this does not seem to be a
     // significant bottleneck, while some theoretically better attempts have lead to bad instruction ordering by the
@@ -434,8 +452,8 @@ __global__ void Marlin(
     #pragma unroll
     for (int i = 0; i < thread_m_blocks; i++)
       ldsm4(frag_a[k % 2][i], &sh_a_stage[a_sh_rd_trans[k % b_sh_wr_iters][i]]);
-    int4* sh_b_stage = sh_b + b_sh_stage * pipe;
-    frag_b_quant[k % 2] = *reinterpret_cast<I4*>(&sh_b_stage[b_sh_rd_delta * (k % b_sh_wr_iters) + b_sh_rd]);
+    int2* sh_b_stage = reinterpret_cast<int2*>(sh_b + b_sh_stage * pipe);
+    frag_b_quant[k % 2] = *reinterpret_cast<I2*>(&sh_b_stage[b_sh_rd_delta * (k % b_sh_wr_iters) + b_sh_rd]);
   };
 
   // Execute the actual tensor core matmul of a sub-tile. 
@@ -443,7 +461,7 @@ __global__ void Marlin(
     // We have the m dimension as the inner loop in order to encourage overlapping dequantization and matmul operations.
     #pragma unroll
     for (int j = 0; j < 4; j++) {
-      int b_quant = frag_b_quant[k % 2][j];
+      int b_quant = frag_b_quant[k % 2][j/2] >> (2 * (j % 2));
       int b_quant_shift = b_quant >> 8;
       FragB frag_b0 = dequant(b_quant);
       // If there are no groups, we can just scale the final output once and can avoid doing so for each weight.
@@ -773,7 +791,7 @@ int marlin_cuda(
     return 0;
 
   const int4* A_ptr = (const int4*) A;
-  const int4* B_ptr = (const int4*) B;
+  const int2* B_ptr = (const int2*) B;
   int4* C_ptr = (int4*) C;
   const int4* s_ptr = (const int4*) s;
 

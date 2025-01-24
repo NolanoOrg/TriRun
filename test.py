@@ -14,20 +14,21 @@ torch.random.manual_seed(seed)
 DEV = torch.device('cuda:0')
 
 
-def gen_quant4(m, n, groupsize=-1):
+def gen_quant2(m, n, groupsize=-1):
     tile = 16
-    maxq = 2 ** 4 - 1
+    maxq = 2 ** 2 - 1
+    minq = -1
     w = torch.randn((m, n), dtype=torch.half, device=DEV)
     if groupsize != -1:
         w = w.reshape((-1, groupsize, n))
         w = w.permute(1, 0, 2)
         w = w.reshape((groupsize, -1))
     s = torch.max(torch.abs(w), 0, keepdim=True)[0]
-    s *= 2 / maxq
+    # s *= 1 / (maxq + minq) # TODO: generalize
     w = torch.round(w / s).int()
-    w += (maxq + 1) // 2
+    w -= minq
     w = torch.clamp(w, 0, maxq)
-    ref = (w - (maxq + 1) // 2).half() * s
+    ref = (w + minq).half() * s
     if groupsize != -1:
         def reshape(w):
             w = w.reshape((groupsize, -1, n))
@@ -46,19 +47,20 @@ def gen_quant4(m, n, groupsize=-1):
     layer.k = m
     layer.n = n
     layer.groupsize = groupsize
-    layer.B = torch.empty((m // 16, n * 16 // 8), dtype=torch.int, device=DEV)
+    layer.B = torch.empty((m // 16, n * 16 // 16), dtype=torch.int, device=DEV)
     layer.s = torch.empty((m // groupsize, n), dtype=torch.half, device=DEV)
     layer.pack(linear, s.t())
     q = layer.B
     s = layer.s
     return ref, q, s
 
+
 class Test(unittest.TestCase):
 
     def run_problem(self, m, n, k, thread_k, thread_n, groupsize=-1):
         print('% 5d % 6d % 6d % 4d % 4d % 4d' % (m, n, k, thread_k, thread_n, groupsize))
         A = torch.randn((m, k), dtype=torch.half, device=DEV)
-        B_ref, B, s = gen_quant4(k, n, groupsize=groupsize)
+        B_ref, B, s = gen_quant2(k, n, groupsize=groupsize)
         C = torch.zeros((m, n), dtype=torch.half, device=DEV)
         C_ref = torch.matmul(A, B_ref)
         workspace = torch.zeros(n // 128 * 16, device=DEV)
@@ -123,7 +125,7 @@ class Test(unittest.TestCase):
         print()
         m, n, k = 16, 256, 64
         A = torch.randn((m, k), dtype=torch.half, device=DEV)
-        B_ref, B, s = gen_quant4(k, n)
+        B_ref, B, s = gen_quant2(k, n)
         C = torch.zeros((m, n), dtype=torch.half, device=DEV)
         workspace = torch.zeros(n // 128, device=DEV)
         err = False
