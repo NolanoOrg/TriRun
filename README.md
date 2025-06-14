@@ -1,25 +1,28 @@
+<!-- TODO: change logo -->
+
 <div align="center">
   <img src="assets/marlin.png" width="250"/>
 </div>
 
-# Marlin
+# TriRun
 
-> [!IMPORTANT]
->
-> This is a fork of [Marlin](https://github.com/IST-DASLab/marlin), and the goal is to make it work with FP16xINT2 matrix multiplications.
->
-> Original README (which is mostly focused on FP16xINT4) follows.
+TriRun is a fork of [Marlin](https://github.com/IST-DASLab/marlin), with the goal of making it work with FP16xINT2 matrix multiplications.
+It achieves close to ideal (8x) performance gains (compared to FP16xFP16 matmul) up to batchsizes of 16-32 tokens.
 
-<!-- TODO: update README with information more relevant to 2-bit matmul -->
+## Differences and similarities with Marlin
 
-This is Marlin, a **M**ixed **A**uto-**R**egressive **Lin**ear kernel (and the name of one of the planet's fastest fish), an extremely optimized FP16xINT4 matmul kernel aimed at LLM inference that can deliver close to ideal (4x)
-speedups up to batchsizes of 16-32 tokens (in contrast to the 1-2 tokens of prior work with comparable speedup). This makes Marlin well suited for larger-scale
-serving, speculative decoding or advanced multi-inference schemes such as CoT-Majority.
+Since this is only a slight modification of [Marlin](https://github.com/IST-DASLab/marlin), most of the optimization techniques are the same,
+except that it operates on half the quantized bit width (2-bit vs 4-bit), which changes some of the performance dynamics.
+
+Notably, while the per-element memory throughput for quantized tensors is doubled (since they are twice as small),
+the overall compute budget stays the same, which makes the FP16xINT2 matrix multiplications very quickly compute-bound as the batchsizes grow.
+
+When memory-bound, there might still be room for improvement, since we didn't go through the full effort of re-engineering the quantized reads of 8 bytes back to 16 bytes (yet).
 
 ## Techniques:
 
 Most modern GPUs feature FLOP to byte ratios of around 100-200.
-Hence, as long as we perform less than 25-50 (tensor core) multiply-accumulates per 4-bit quantized weight, it should (theoretically) be possible to maintain near ideal 4x speedup over FP16 weights.
+Hence, as long as we perform less than 13-25 (tensor core) multiply-accumulates per 2-bit quantized weight, it should (theoretically) be possible to maintain near ideal 8x speedup over FP16 weights.
 This means that the full performance benefits of weight-only quantization should, in principle, extend to batchsizes 4-8x larger than what is currently achieved by existing kernels.
 However, actually realizing this in practice is very challenging, since we essentially need to fully utilize all available GPU resources (global memory, L2 cache, shared memory, tensor cores, vector cores), *simultaneously*.
 Marlin accomplishes this through numerous techniques and optimizations, briefly sketched below:
@@ -37,6 +40,8 @@ Marlin accomplishes this through numerous techniques and optimizations, briefly 
 * Overall, the kernel's PTX assembly was extensively analyzed in NSight-Compute, and the CUDA code features several more redundant or slightly suboptimal constructions that however compile to faster PTX.
 
 ## Benchmarks:
+
+<!-- TODO: replace and update benchmarks -->
 
 We first compare the performance of Marlin with other popular 4-bit inference kernels, on a large matrix that can be
 ideally partioned on an NVIDIA A10 GPU. This allows all kernels to reach pretty much their best possible performance.
@@ -143,6 +148,8 @@ We measure the following WikiText and Red-Pajama perplexities, as well as MMLU z
 We note that this GPTQ example is currently intended mostly as a demonstration of how to produce accurate Marlin models and as an end-to-end validation of kernel correctness (rather than to be a flexible compression tool).
 
 ## Cite:
+
+<!-- TODO: should this be changed? Most of the credit should still go to the original authors -->
 
 If you found this work useful, please consider citing:
 

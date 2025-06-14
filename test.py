@@ -15,7 +15,6 @@ DEV = torch.device('cuda:0')
 
 
 def gen_quant2(m, n, groupsize=-1):
-    tile = 16
     maxq = 2 ** 2 - 1
     minq = -1
     w = torch.randn((m, n), dtype=torch.half, device=DEV)

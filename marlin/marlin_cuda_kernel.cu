@@ -78,9 +78,10 @@ __device__ inline void cp_async4_stream(void* smem_ptr, const void* glob_ptr) {
   );
 }
 
-// Same, but fewer bytes at a time?
-// TODO: don't use this, cp.async.cg only works with 16 byte chunks,
-// so cp.async.ca is used instead here but it copies to more cache levels.
+// Asynchronous global->shared copy with a cache hint indicating that the values may be evicted immediately; used for
+// quantized weights B. which are only accessed precisely once and should thus not pollute the L2 cache which we need
+// for inputs A and outputs C. Copies 8 bytes instead of 16, which means `cp.async.ca` has to be used
+// instead of `cp.async.cg`, despite also copying to L1 cache.
 __device__ inline void cp_async2_stream(void* smem_ptr, const void* glob_ptr) {
   const int BYTES = 8;
   uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
