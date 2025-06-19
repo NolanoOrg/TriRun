@@ -1,7 +1,5 @@
-<!-- TODO: change logo -->
-
 <div align="center">
-  <img src="assets/marlin.png" width="250"/>
+  <img src="assets/trirun.png" width="300"/>
 </div>
 
 # TriRun
