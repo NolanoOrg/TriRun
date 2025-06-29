@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-import marlin
+import trirun
 
 
 seed = 0
@@ -40,7 +40,7 @@ def gen_quant2(m, n, groupsize=-1):
     linear = nn.Linear(m, n)
     linear.weight.data = ref.t()
     # Workaround to test some special cases that are forbidden by the API
-    layer = marlin.Layer(256, 256, groupsize=groupsize)
+    layer = trirun.Layer(256, 256, groupsize=groupsize)
     if groupsize == -1:
         groupsize = m
     layer.k = m
@@ -63,7 +63,7 @@ class Test(unittest.TestCase):
         C = torch.zeros((m, n), dtype=torch.half, device=DEV)
         C_ref = torch.matmul(A, B_ref)
         workspace = torch.zeros(n // 128 * 16, device=DEV)
-        marlin.mul(A, B, C, s, workspace, thread_k, thread_n, -1)
+        trirun.mul(A, B, C, s, workspace, thread_k, thread_n, -1)
         torch.cuda.synchronize()
         self.assertLess(torch.mean(torch.abs(C - C_ref)) / torch.mean(torch.abs(C_ref)), 0.001)
 
@@ -129,20 +129,20 @@ class Test(unittest.TestCase):
         workspace = torch.zeros(n // 128, device=DEV)
         err = False
         try:
-            marlin.mul(A, B, C, s, workspace, 128, 128, -1)
+            trirun.mul(A, B, C, s, workspace, 128, 128, -1)
         except:
             err = True 
         self.assertTrue(err)
         err = False
         try:
-            marlin.mul(A, B, C, s, workspace, 256, 256, -1)
+            trirun.mul(A, B, C, s, workspace, 256, 256, -1)
         except:
             err = True 
         self.assertTrue(err)
         s = torch.zeros((2, n), dtype=torch.half, device=DEV)
         err = False
         try:
-            marlin.mul(A, B, C, s, workspace, 256, 256, -1)
+            trirun.mul(A, B, C, s, workspace, 256, 256, -1)
         except:
             err = True 
         self.assertTrue(err)

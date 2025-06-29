@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from gptq import *
 from quant import *
-import marlin
+import trirun
 
 
 DEV = torch.device('cuda:0')
@@ -209,8 +209,8 @@ def llama_eval(model, dataloader, dev):
 def llama_pack(model, quantizers):
     layers = find_layers(model)
     layers = {n: layers[n] for n in quantizers}
-    marlin.replace_linear(model, lambda n: n in quantizers, groupsize=args.groupsize)
-    qlayers = find_layers(model, [marlin.Layer])
+    trirun.replace_linear(model, lambda n: n in quantizers, groupsize=args.groupsize)
+    qlayers = find_layers(model, [trirun.Layer])
     print('Packing ...')
     for name in qlayers:
         print(name)
@@ -303,7 +303,7 @@ if __name__ == '__main__':
         llama_eval(model, testloader, DEV)
 
     if args.save:
-        args.save += '.marlin'
+        args.save += '.trirun'
         if args.groupsize != -1:
             args.save += '.g%d' % args.groupsize
         llama_pack(model, quantizers)

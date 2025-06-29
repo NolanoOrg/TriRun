@@ -1,4 +1,5 @@
 # Copyright (C) Marlin.2024 Elias Frantar (elias.frantar@ist.ac.at)
+# Copyright (C) TriRun.2025 Francis Couture-Harpin (git@compilade.net)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,12 +19,12 @@ import torch
 import torch.nn as nn
 
 
-import marlin_cuda
+import trirun_cuda
 
 def mul(A, B, C, s, workspace, thread_k=-1, thread_n=-1, sms=-1, max_par=16):
-    """Marlin FP16xINT2 multiply; can be used within `torch.compile`.
+    """TriRun FP16xINT2 multiply; can be used within `torch.compile`.
     @A: `torch.half` input matrix of shape `(m, k)` in standard row-major layout
-    @B: `torch.int` weight matrix of original shape `(k, n)` in Marlin format; see `Layer.pack()`
+    @B: `torch.int` weight matrix of original shape `(k, n)` in TriRun format; see `Layer.pack()`
     @C: `torch.half` out matrix of shape `(m, n)` in standard row-major layout
     @s: `torch.half` scales of shape `(m / groupsize, n)`
     @workspace: `torch.int` tensor with at least `n / 128 * max_par` entries that are all zero
@@ -32,10 +33,10 @@ def mul(A, B, C, s, workspace, thread_k=-1, thread_n=-1, sms=-1, max_par=16):
     @sms: number of SMs to use for the kernel (can usually be left as auto -1)
     @max_par: maximum number of batch 64 problems to solve in parallel for large input sizes
     """
-    marlin_cuda.mul(A, B, C, s, workspace, thread_k, thread_n, sms, max_par)
+    trirun_cuda.mul(A, B, C, s, workspace, thread_k, thread_n, sms, max_par)
 
 
-# Precompute permutations for Marlin weight and scale shuffling 
+# Precompute permutations for TriRun weight and scale shuffling
 
 def _get_perms():
     perm = []
@@ -73,10 +74,10 @@ _perm, _scale_perm, _scale_perm_single = _get_perms()
 
 
 class Layer(nn.Module):
-    """PyTorch compatible Marlin layer; 2-bit (symmetric grouped) linear layer without bias."""
+    """PyTorch compatible TriRun layer; 2-bit (symmetric grouped) linear layer without bias."""
 
     def __init__(self, infeatures, outfeatures, groupsize=-1):
-        """Create an empty Marlin layer.
+        """Create an empty TriRun layer.
         @infeatures: number of input features (must be divisible by 128)
         @outfeatures: number of output features (must be divisible by 256)
         @groupsize: quantization groupsize (must be -1 or 128)
@@ -104,7 +105,7 @@ class Layer(nn.Module):
         return C
 
     def pack(self, linear, scales):
-        """Pack a fake-quantized linear layer into this actual Marlin representation.
+        """Pack a fake-quantized linear layer into this actual TriRun representation.
         @linear: fake-quantized `torch.nn.Linear` layer to convert (must be of type `torch.half`)
         @scales: corresponding quantization scales of shape `(infeatures, groups)`
         """ 
@@ -146,10 +147,10 @@ class Layer(nn.Module):
 
 
 def replace_linear(module, name_filter=lambda n: True, groupsize=-1, name=''):
-    """Recursively replace all `torch.nn.Linear` layers by empty Marlin layers.
+    """Recursively replace all `torch.nn.Linear` layers by empty TriRun layers.
     @module: top-level module in which to perform the replacement 
     @name_filter: lambda indicating if a layer should be replaced
-    @groupsize: marlin groupsize
+    @groupsize: quantization groupsize
     @name: root-level name
     """
     if isinstance(module, Layer):

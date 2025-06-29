@@ -1,13 +1,14 @@
 # Copied from https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/__main__.py
 # with minor modifications for Marlin checkpoint loading as I didn't find an easy way to call `lm_eval.cli_evaluate(...)` directly
+# and then minor naming modifications for TriRun.
 
 
-import marlin
+import trirun
 
 # Save checkpoint name here since passing around extra args seems to confuse the eval harness
-MARLIN_CHECKPOINT = '' 
+TRIRUN_CHECKPOINT = ''
 
-def get_llama_marlin(name, *args, **kwargs):
+def get_llama_trirun(name, *args, **kwargs):
     import torch
     def skip(*args, **kwargs):
         pass
@@ -25,9 +26,9 @@ def get_llama_marlin(name, *args, **kwargs):
         if 'mlp.gate_proj' in n or 'mlp.up_proj' in n or 'mlp.down_proj' in n:
             return True
         return False
-    groupsize = -1 if MARLIN_CHECKPOINT.endswith('marlin') else 128
-    marlin.replace_linear(model, name_filter, groupsize=groupsize)
-    model.load_state_dict(torch.load(MARLIN_CHECKPOINT))
+    groupsize = -1 if TRIRUN_CHECKPOINT.endswith('trirun') else 128
+    trirun.replace_linear(model, name_filter, groupsize=groupsize)
+    model.load_state_dict(torch.load(TRIRUN_CHECKPOINT))
     return model
 
 
@@ -177,10 +178,10 @@ def parse_eval_args() -> argparse.Namespace:
         help="Controls the reported logging error level. Set to DEBUG when testing + adding new task configurations for comprehensive log output.",
     )
     parser.add_argument(
-        "--marlin_checkpoint",
+        "--trirun_checkpoint",
         type=str,
         default="",
-        help="Marlin checkpoint to load."
+        help="TriRun checkpoint to load."
     )
     return parser.parse_args()
 
@@ -189,13 +190,13 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
     if not args:
         # we allow for args to be passed externally, else we parse them ourselves
         args = parse_eval_args()
-    if args.marlin_checkpoint:
-        global MARLIN_CHECKPOINT
-        MARLIN_CHECKPOINT = args.marlin_checkpoint
-        del args.marlin_checkpoint
-        # Overwrite model load with marlin load
+    if args.trirun_checkpoint:
+        global TRIRUN_CHECKPOINT
+        TRIRUN_CHECKPOINT = args.trirun_checkpoint
+        del args.trirun_checkpoint
+        # Overwrite model load with trirun load
         import transformers
-        transformers.AutoModelForCausalLM.from_pretrained = staticmethod(get_llama_marlin)
+        transformers.AutoModelForCausalLM.from_pretrained = staticmethod(get_llama_trirun)
 
     eval_logger = utils.eval_logger
     eval_logger.setLevel(getattr(logging, f"{args.verbosity}"))

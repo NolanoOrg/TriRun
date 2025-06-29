@@ -1,5 +1,6 @@
 /*
  * Copyright (C) Marlin.2024 Elias Frantar (elias.frantar@ist.ac.at)
+ * Copyright (C) TriRun.2025 Francis Couture-Harpin (git@compilade.net)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +21,7 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <cuda_runtime.h>
 
-int marlin_cuda(
+int trirun_cuda(
   const void* A,
   const void* B,
         void* C,
@@ -61,7 +62,7 @@ void mul(
   if (workspace.numel() < prob_n / 128 * max_par)
     AT_ERROR("workspace must be of size at least ", prob_n / 128 * max_par, ".");
   int dev = A.get_device();
-  int err = marlin_cuda(
+  int err = trirun_cuda(
     A.data_ptr(),
     B.data_ptr(),
     C.data_ptr(),
@@ -89,5 +90,5 @@ void mul(
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("mul", &mul, "Marlin FP16xINT2 matmul.");
+  m.def("mul", &mul, "TriRun FP16xINT2 matmul.");
 }

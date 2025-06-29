@@ -3,8 +3,8 @@ dist
 profile.ncu-rep
 *.egg-info*
 backup
-marlin/__pycache__
+trirun/__pycache__
 _backup
 gptq/__pycache__
-gptq/*.marlin.g128
+gptq/*.trirun.g128
 __pycache__

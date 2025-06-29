@@ -1,5 +1,6 @@
 /*
  * Copyright (C) Marlin.2024 Elias Frantar (elias.frantar@ist.ac.at)
+ * Copyright (C) TriRun.2025 Francis Couture-Harpin (git@compilade.net)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +16,8 @@
  */
 
 
-#ifndef MARLIN_CUDA_KERNEL_CUH
-#define MARLIN_CUDA_KERNEL_CUH
+#ifndef TRIRUN_CUDA_KERNEL_CUH
+#define TRIRUN_CUDA_KERNEL_CUH
 
 
 #include <cuda.h>
@@ -210,7 +211,7 @@ template <
   const int stages, // number of stages for the async global->shared fetch pipeline
   const int group_blocks = -1 // number of consecutive 16x16 blocks with a separate quantization scale
 >
-__global__ void Marlin(
+__global__ void TriRun(
   const int4* __restrict__ A, // fp16 input matrix of shape mxk 
   const int2* __restrict__ B, // 2bit quantized weight matrix of shape kxn 
         int4* __restrict__ C, // fp16 output buffer of shape mxn
@@ -731,11 +732,11 @@ const int SHARED_MEM = 96 * 1024; // max shared memory on compute capability 8.6
     group_blocks == GROUP_BLOCKS \
   ) { \
     cudaFuncSetAttribute( \
-      Marlin<THREADS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, STAGES, GROUP_BLOCKS>, \
+      TriRun<THREADS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, STAGES, GROUP_BLOCKS>, \
       cudaFuncAttributeMaxDynamicSharedMemorySize, \
       SHARED_MEM \
     ); \
-    Marlin< \
+    TriRun< \
       THREADS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, STAGES, GROUP_BLOCKS \
     ><<<blocks, THREADS, SHARED_MEM, stream>>>( \
       A_ptr, B_ptr, C_ptr, s_ptr, \
@@ -747,7 +748,7 @@ const int SHARED_MEM = 96 * 1024; // max shared memory on compute capability 8.6
 const int ERR_PROB_SHAPE = 1;
 const int ERR_KERN_SHAPE = 2;
 
-int marlin_cuda(
+int trirun_cuda(
   const void* A,
   const void* B,
         void* C,
