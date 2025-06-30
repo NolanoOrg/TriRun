@@ -57,12 +57,16 @@ if 'A100' in gpu:
     SMS = 108
 elif 'A10' in gpu:
     SMS = 72
+elif 'A40' in gpu:
+    SMS = 84
 elif '3090' in gpu:
     SMS = 82
 elif '4090' in gpu:
     SMS = 128
 elif 'A6000' in gpu:
     SMS = 84
+elif 'L40' in gpu:
+    SMS = 142
 else:
     SMS = -1
 
