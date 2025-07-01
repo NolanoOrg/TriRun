@@ -4,7 +4,7 @@
 
 # TriRun
 
-TriRun is a fork of [Marlin](https://github.com/IST-DASLab/marlin), with the goal of making it work with FP16xINT2 matrix multiplications,
+TriRun is a hard fork of [Marlin](https://github.com/IST-DASLab/marlin), with the goal of making it work with FP16xINT2 matrix multiplications,
 for inference with ternary models like TriLMs and TriTera.
 It achieves close to ideal (8x) performance gains (compared to FP16xFP16 matmul) up to batchsizes of 16-32 tokens.
 
